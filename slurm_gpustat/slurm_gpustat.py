@@ -530,7 +530,7 @@ def gpu_usage(resources: dict, partition: Optional[str] = None) -> dict:
     rows = parse_cmd(cmd)
     usage = defaultdict(dict)
     for row in rows:
-        tokens = row.split()
+        tokens = row.replace("gres:gpu", "gpu").split()
         # ignore pending jobs
         if len(tokens) < 4 or not tokens[0].startswith("gpu"):
             continue

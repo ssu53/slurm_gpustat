@@ -609,6 +609,7 @@ def available(
         resources: dict = None,
         states: dict = None,
         verbose: bool = False,
+        partition: Optional[str] = None
 ):
     """Print a short summary of resources available on the cluster.
 
@@ -630,7 +631,7 @@ def available(
         states = node_states()
     res = {key: val for key, val in resources.items()
            if states.get(key, "down") not in INACCESSIBLE}
-    usage = gpu_usage(resources=res)
+    usage = gpu_usage(resources=res, partition=partition)
     for subdict in usage.values():
         for gpu_type, node_dicts in subdict.items():
             for node_name, user_gpu_count in node_dicts.items():

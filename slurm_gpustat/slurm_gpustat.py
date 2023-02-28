@@ -684,7 +684,7 @@ def all_info(color: int, verbose: bool, partition: Optional[str] = None):
         print(divider)
     in_use(resources, partition=partition)
     print(divider)
-    available(resources=resources, states=states, verbose=verbose)
+    available(resources=resources, states=states, verbose=verbose, partition=partition)
     print(divider)
 
 

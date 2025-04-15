@@ -83,6 +83,37 @@ v100: 5 available
  -> gnodeg2: 3 v100 [cpu: 8/64, gres/gpu: 1/4, mem: 40G/191668M] [user2]
 ```
 
+Adding `--node-details` to this command will produce detailed information per node.  Example output:
+
+```
+Node: stanford-hgx-1 (State: mix)
+  Total GPUs:
+    8 x a100
+  Free GPUs:
+    0 x a100
+  Users:
+    alice: 0 x l40s
+    bob: 4 x a100
+    carrot: 4 x a100
+
+Node: stanford1 (State: idle)
+  Total GPUs:
+    1 x a100
+    9 x 2080ti
+  Free GPUs:
+    1 x a100
+    9 x 2080ti
+
+Node: stanford2 (State: mix)
+  Total GPUs:
+    10 x titanrtx
+  Free GPUs:
+    9 x titanrtx
+  Users:
+    bob: 1 x titanrtx
+```
+
+
 Running `slurm_gpustat --history` (after the daemon has run for a little while) will produce something like this:
 
 ```

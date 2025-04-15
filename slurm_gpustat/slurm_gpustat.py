@@ -635,7 +635,11 @@ def available(
     for subdict in usage.values():
         for gpu_type, node_dicts in subdict.items():
             for node_name, user_gpu_count in node_dicts.items():
-                resource_idx = [x["type"] for x in res[node_name]].index(gpu_type)
+                try:
+                    resource_idx = [x["type"] for x in res[node_name]].index(gpu_type)
+                except ValueError:
+                    print(f"Warning: GPU type '{gpu_type}' not found on node '{node_name}'. Available GPU types: {[x['type'] for x in res[node_name]]}. Skipping.")
+                    continue
                 count = res[node_name][resource_idx]["count"]
                 count = max(count - user_gpu_count['n_gpu'], 0)
                 res[node_name][resource_idx]["count"] = count
@@ -657,6 +661,97 @@ def available(
                     summary_strs.append(f"\n -> {node}: {count} {key} {details}")
             tail = " ".join(summary_strs)
         print(f"{key}: {gpu_count} available {tail}")
+
+
+@beartype
+def node_gpu_details(resources: dict = None, states: dict = None, partition: Optional[str] = None):
+    """Print detailed information about GPU availability per node.
+    
+    Args:
+        resources: a summary of cluster resources, organised by node name.
+        states: a mapping between node names and SLURM states.
+        partition: the partition/queue (or multiple, comma separated) of interest.
+    """
+    if not resources:
+        resources = parse_all_gpus()
+    if not states:
+        states = node_states()
+    
+    # Filter out inaccessible nodes
+    res = {key: val for key, val in resources.items()
+           if states.get(key, "down") not in INACCESSIBLE}
+    
+    # Get usage information
+    usage = gpu_usage(resources=res, partition=partition)
+    
+    # Create a copy of resources to track remaining GPUs after allocations
+    remaining_gpus = {}
+    for node_name, gpu_specs in res.items():
+        remaining_gpus[node_name] = []
+        for gpu_spec in gpu_specs:
+            remaining_gpus[node_name].append(gpu_spec.copy())
+    
+    # Subtract used GPUs
+    for user, subdict in usage.items():
+        for gpu_type, node_dicts in subdict.items():
+            for node_name, user_gpu_count in node_dicts.items():
+                if node_name in remaining_gpus:
+                    # Find matching GPU type
+                    match_found = False
+                    for i, spec in enumerate(remaining_gpus[node_name]):
+                        if spec["type"] == gpu_type:
+                            match_found = True
+                            # Update count (ensure we don't go below 0)
+                            remaining_gpus[node_name][i]["count"] = max(
+                                0, spec["count"] - user_gpu_count['n_gpu']
+                            )
+                    if not match_found:
+                        print(f"Warning: GPU type '{gpu_type}' not found on node '{node_name}'")
+    
+    # Print header
+    print("\nGPU Details Per Node:")
+    print("=====================")
+    
+    # Sort nodes by name
+    for node_name in sorted(remaining_gpus.keys()):
+        if node_name not in res:
+            continue  # Skip if node doesn't exist in resources
+            
+        node_state = states.get(node_name, "unknown")
+        print(f"\nNode: {node_name} (State: {node_state})")
+        
+        # Display total GPUs on this node
+        total_specs = resources.get(node_name, [])
+        if total_specs:
+            print("  Total GPUs:")
+            for spec in total_specs:
+                print(f"    {spec['count']} x {spec['type']}")
+        
+        # Display free GPUs on this node
+        print("  Free GPUs:")
+        free_specs = remaining_gpus.get(node_name, [])
+        if free_specs:
+            for spec in free_specs:
+                print(f"    {spec['count']} x {spec['type']}")
+        else:
+            print("    None")
+        
+        # Display users on this node
+        node_users = set()
+        for user, subdict in usage.items():
+            for gpu_type, node_dicts in subdict.items():
+                if node_name in node_dicts:
+                    node_users.add(user)
+        
+        if node_users:
+            print("  Users:")
+            for user in sorted(node_users):
+                user_gpus = []
+                for gpu_type, node_dicts in usage[user].items():
+                    if node_name in node_dicts:
+                        count = node_dicts[node_name]['n_gpu']
+                        user_gpus.append(f"{count} x {gpu_type}")
+                print(f"    {user}: {', '.join(user_gpus)}")
 
 
 @beartype
@@ -711,10 +806,16 @@ def main():
     parser.add_argument("--color", type=int, default=1, help="color output")
     parser.add_argument("--verbose", action="store_true",
                         help="provide a more detailed breakdown of resources")
+    parser.add_argument("--node-details", action="store_true",
+                        help="show detailed GPU information per node")
     args = parser.parse_args()
 
     if args.action == "current":
         all_info(color=args.color, verbose=args.verbose, partition=args.partition)
+        if args.node_details:
+            resources = parse_all_gpus(partition=args.partition)
+            states = node_states(partition=args.partition)
+            node_gpu_details(resources=resources, states=states, partition=args.partition)
     elif args.action == "history":
         data = GPUStatDaemon.deserialize_usage(args.log_path)
         historical_summary(data)
